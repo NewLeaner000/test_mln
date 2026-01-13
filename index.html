@@ -1,0 +1,133 @@
+<script>
+    // --- CẤU HÌNH ---
+    // PASTE LINK NGROK CỦA BẠN VÀO ĐÂY (Ví dụ: https://a1b2.ngrok-free.app)
+    const API_URL = "https://nonvicarious-yuonne-lageniform.ngrok-free.dev";
+    
+    const staticEvents = [
+        {
+            text: "Một nhà thầu đề nghị 'lại quả' 20% giá trị hợp đồng.",
+            options: [
+                { text: "Đồng ý (Tham ô)", trust: -30, budget: 20, msg: "Bạn có tiền, nhưng lương tâm cắn rứt." },
+                { text: "Từ chối", trust: 10, budget: 0, msg: "Bạn giữ được phẩm giá." }
+            ]
+        },
+        {
+            text: "Cần mua thiết bị mới. Hàng ngoại nhập hay hàng nội địa?",
+            options: [
+                { text: "Hàng ngoại đắt đỏ (Lãng phí)", trust: 0, budget: -30, msg: "Ngân sách thâm hụt nặng." },
+                { text: "Hàng nội địa (Tiết kiệm)", trust: 5, budget: -10, msg: "Tiết kiệm ngân sách hiệu quả." }
+            ]
+        }
+    ];
+
+    let state = { day: 1, trust: 100, budget: 100, alive: true, history: [] };
+
+    function startGame() {
+        state = { day: 1, trust: 100, budget: 100, alive: true, history: [] };
+        updateUI();
+        document.getElementById('log').innerHTML = "";
+        nextTurn();
+    }
+
+    async function nextTurn() {
+        if (!state.alive) return;
+        
+        if (state.day > 30) {
+            endGame("WIN");
+            return;
+        }
+
+        // KIỂM TRA SỰ KIỆN MINIBOSS (Ngày 10, 20, 30)
+        if (state.day === 10 || state.day === 20 || state.day === 30) {
+            document.getElementById('story-text').innerText = "⚠️ ĐANG KẾT NỐI VỚI TRUNG ƯƠNG (AI GENERATING)...";
+            document.getElementById('choices').innerHTML = ""; // Ẩn nút khi đang load
+            
+            try {
+                // Gọi về Laptop của bạn để lấy tình huống
+                const response = await fetch(`${API_URL}/generate-boss`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        day: state.day,
+                        trust: state.trust,
+                        budget: state.budget,
+                        history: state.history
+                    })
+                });
+                
+                const bossEvent = await response.json();
+                renderEvent(bossEvent, true); // true = Boss Mode
+            } catch (error) {
+                console.error(error);
+                renderEvent({ text: "Mất kết nối với cấp trên! (Lỗi Server)", options: [{text: "Bỏ qua", trust: 0, budget: 0, msg: "May mắn thoát nạn."}] });
+            }
+        } else {
+            // Ngày thường: Lấy random có sẵn cho nhanh
+            const randomEvent = staticEvents[Math.floor(Math.random() * staticEvents.length)];
+            renderEvent(randomEvent, false);
+        }
+    }
+
+    function renderEvent(eventData, isBoss) {
+        let prefix = isBoss ? "🔴 [BÁO ĐỘNG ĐỎ] " : "";
+        document.getElementById('story-text').innerText = `NGÀY ${state.day}: ${prefix}${eventData.text}`;
+        const choiceDiv = document.getElementById('choices');
+        choiceDiv.innerHTML = ""; 
+
+        eventData.options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.innerText = opt.text;
+            // Lưu text lựa chọn để gửi cho AI lần sau
+            btn.onclick = () => handleChoice(opt, opt.text);
+            if (isBoss) btn.style.border = "1px solid red"; // Nút boss màu đỏ
+            choiceDiv.appendChild(btn);
+        });
+    }
+
+    function handleChoice(option, choiceText) {
+        state.trust += (option.trust || 0);
+        state.budget += (option.budget || 0);
+        
+        // Ghi log hành động để AI học
+        state.history.push(choiceText);
+
+        if (state.trust > 100) state.trust = 100;
+        if (state.budget > 100) state.budget = 100;
+
+        const log = document.getElementById('log');
+        log.innerHTML = `> Ngày ${state.day}: ${option.msg}<br>` + log.innerHTML;
+
+        checkStatus();
+        
+        if (state.alive) {
+            state.day++;
+            updateUI();
+            setTimeout(nextTurn, 1000); 
+        }
+    }
+
+    // ... (Giữ nguyên các hàm checkStatus, endGame, updateUI cũ) ...
+    function checkStatus() {
+        if (state.trust <= 0) endGame("LOSE_TRUST");
+        else if (state.budget <= 0) endGame("LOSE_MONEY");
+    }
+    
+    function endGame(type) {
+        state.alive = false;
+        let msg = "", color = "red";
+        if (type === "WIN") { msg = "CHÚC MỪNG! Bạn đã chiến thắng!"; color = "#00ff00"; }
+        else if (type === "LOSE_TRUST") { msg = "GAME OVER: Mất hết uy tín."; }
+        else if (type === "LOSE_MONEY") { msg = "GAME OVER: Ngân sách cạn kiệt."; }
+        
+        document.getElementById('story-text').innerHTML = `<h2 style="color:${color}">${msg}</h2>`;
+        document.getElementById('choices').innerHTML = '<button onclick="startGame()">Chơi lại</button>';
+    }
+
+    function updateUI() {
+        document.getElementById('day').innerText = state.day;
+        document.getElementById('trust').innerText = state.trust;
+        document.getElementById('budget').innerText = state.budget;
+        document.getElementById('trust').className = state.trust < 30 ? "red" : "";
+        document.getElementById('budget').className = state.budget < 30 ? "red" : "";
+    }
+</script>
